@@ -10,12 +10,16 @@ import (
 
 // writePluginConfig writes a minimal valid service config plus the given
 // plugins section, so the plugin validation matrix exercises exactly that part.
+// The control section is required since upstream's clone merge: Load refuses a
+// config without control.grpc_addr before plugin validation runs, so the
+// fixtures stay environment-independent (no CLOUD_CONTROL_GRPC_ADDR needed).
 func writePluginConfig(t *testing.T, plugins string) string {
 	t.Helper()
 	path := filepath.Join(t.TempDir(), "config.yaml")
 	contents := "server: {port: 8080, mode: test, read_timeout: 5s, write_timeout: 5s}\n" +
 		"logger: {level: info, filename: " + filepath.ToSlash(filepath.Join(t.TempDir(), "app.log")) + ", max_size: 1, max_backups: 1, max_age: 1, compress: false, enable_console: false}\n" +
 		"database: {driver: postgres, max_idle_conns: 1, max_open_conns: 1, conn_max_lifetime: 1h}\n" +
+		"control: {grpc_addr: 127.0.0.1:8082}\n" +
 		plugins
 	if e := os.WriteFile(path, []byte(contents), 0o600); e != nil {
 		t.Fatal(e)
