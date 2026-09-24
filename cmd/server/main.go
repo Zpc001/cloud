@@ -5,6 +5,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -13,10 +14,12 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
+	"google.golang.org/grpc"
 
 	"github.com/wanglongan587/cloud/internal/api/router"
 	"github.com/wanglongan587/cloud/internal/collab"
 	"github.com/wanglongan587/cloud/internal/config"
+	"github.com/wanglongan587/cloud/internal/controlgrpc"
 	"github.com/wanglongan587/cloud/internal/core"
 	"github.com/wanglongan587/cloud/internal/logger"
 	"github.com/wanglongan587/cloud/internal/repository"
@@ -76,20 +79,45 @@ func run() (runErr error) {
 	}
 	gin.SetMode(cfg.Server.Mode)
 	server := &http.Server{Addr: fmt.Sprintf(":%d", cfg.Server.Port), Handler: router.New(store, auth, log), ReadHeaderTimeout: 5 * time.Second, ReadTimeout: cfg.Server.ReadTimeout, WriteTimeout: cfg.Server.WriteTimeout, IdleTimeout: 60 * time.Second}
-	failed := make(chan error, 1)
+	// The control listener is bound before serving so a taken port fails startup, not a Controller.
+	control, e := net.Listen("tcp", cfg.Control.GRPCAddr)
+	if e != nil {
+		return e
+	}
+	grpcServer := controlgrpc.New(store)
+	failed := make(chan error, 2)
 	go func() {
 		log.Info("Cloud listening", zap.String("address", server.Addr))
 		failed <- server.ListenAndServe()
 	}()
+	go func() {
+		log.Info("Cloud control listening", zap.String("address", control.Addr().String()))
+		failed <- grpcServer.Serve(control)
+	}()
 	select {
 	case e = <-failed:
-		if errors.Is(e, http.ErrServerClosed) {
+		if errors.Is(e, http.ErrServerClosed) || errors.Is(e, grpc.ErrServerStopped) {
 			return nil
 		}
 		return e
 	case <-ctx.Done():
 		shutdown, stop := context.WithTimeout(context.Background(), 10*time.Second)
 		defer stop()
+		// In-flight control calls finish or are cut at the same deadline as HTTP; a Controller
+		// retries with the same submission identity, so cutting them loses nothing durable.
+		// Tell the lease holder to stop claiming before its stream is cut; the Drain signal is a
+		// hint, so a Controller that misses it simply fails its next claim against a stopped server.
+		store.Signals.Drain()
+		stopped := make(chan struct{})
+		go func() {
+			grpcServer.GracefulStop()
+			close(stopped)
+		}()
+		select {
+		case <-stopped:
+		case <-shutdown.Done():
+			grpcServer.Stop()
+		}
 		return server.Shutdown(shutdown)
 	}
 }

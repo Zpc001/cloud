@@ -110,6 +110,48 @@ export interface AssistSuggestion {
   suggestedValues: AssistSuggestionSuggestedValues;
 }
 
+export type CloneStateKind = typeof CloneStateKind[keyof typeof CloneStateKind];
+
+
+export const CloneStateKind = {
+  pending: 'pending',
+  succeeded: 'succeeded',
+  failed: 'failed',
+} as const;
+
+export type CloneStateReason = typeof CloneStateReason[keyof typeof CloneStateReason];
+
+
+export const CloneStateReason = {
+  sourceUnavailable: 'sourceUnavailable',
+  branchNotFound: 'branchNotFound',
+  destinationConflict: 'destinationConflict',
+  operationFailed: 'operationFailed',
+  unspecified: 'unspecified',
+} as const;
+
+export interface CloneState {
+  commit?: string;
+  kind: CloneStateKind;
+  path?: string;
+  reason?: CloneStateReason;
+  retainedPath?: string;
+}
+
+export interface CloneOperation {
+  branch: string;
+  createdAt: string;
+  /** @nullable */
+  executionId: string | null;
+  /** @nullable */
+  nodeId: string | null;
+  operationId: string;
+  repository: string;
+  requestId: string;
+  state: CloneState;
+  updatedAt: string;
+}
+
 export type CollaborationTargetType = typeof CollaborationTargetType[keyof typeof CollaborationTargetType];
 
 
@@ -1018,6 +1060,29 @@ export type PostApiV1TenantsBody = {
      * @pattern ^[a-z0-9][a-z0-9-]{0,63}$
      */
   slug: string;
+};
+
+export type GetApiV1TenantsTidClonesParams = {
+/**
+ * @minimum 1
+ * @maximum 100
+ */
+limit?: number;
+/**
+ * Exclusive UUID cursor, ascending stable ordering.
+ */
+after?: string;
+};
+
+export type GetApiV1TenantsTidClones200 = {
+  items: CloneOperation[];
+  nextCursor: string;
+};
+
+export type PostApiV1TenantsTidClonesBody = {
+  branch: string;
+  repository: string;
+  requestId: string;
 };
 
 export type GetApiV1TenantsTidCollaborationTargets200 = {

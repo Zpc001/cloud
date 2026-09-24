@@ -41,6 +41,11 @@ Migrations are executed in ascending numerical sequence. The sequence is **appen
 - **`0011_issue_interactions.sql`**: new table `issue_interactions` (the `@` interaction spine) — one row per selected collaboration target: `id, tenant_id, issue_id, comment_id, target_type, target_id, mode, task, run_id, created_at`. (formerly `0009_issue_interactions.sql`)
 - **`0012_issue_interaction_input.sql`**: one generic additive column: `ALTER TABLE issue_interactions ADD COLUMN input jsonb NOT NULL DEFAULT '{}' CHECK (jsonb_typeof(input)='object')` — the confirmed form values. Deliberately excludes `version`, a `status` enum, `confirmed_at` and a separate inputs table; `0011` is not modified. (formerly `0010_issue_interaction_input.sql`)
 - **`0013_project_space_optional.sql`** (append-only compatibility migration): `projects.space_id` back to **NULLABLE** — upstream `0007` imposed `NOT NULL` + full project binding; the product decision (PS3 / D2=C) keeps a Space an *optional* grouping. `0013` only relaxes the constraint; it deliberately **does NOT unbind** the projects `0007` already assigned to their default Space (no data change, no scope shrink).
+- **`0014_clone_coordination.sql`** (append-only, after upstream `0008–0013`): clone coordination through the internal control contract (independent of the Effect-level `operations` model):
+  - `clone_requests`: work Cloud accepted in its own business transaction, idempotent on `(tenant, user, request_id)`, state `queued→dispatched→succeeded/failed`.
+  - `clone_executions`: executions a Controller registers before dispatching (exactly one per request, Controller-chosen opaque identities), their input, terminal result and the lease epoch at registration.
+  - `clone_event_receipts`: exact receipts `(execution, sequence, event)` of Node events, the only basis for acknowledging a Node.
+  - `control_submissions`: identity, request digest and recorded response of every state-changing submission; the same identity with the same content replays the response instead of reapplying.
 
 ## Checksum integrity and immutability
 

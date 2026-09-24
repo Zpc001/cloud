@@ -5,9 +5,12 @@ import (
 	"strings"
 )
 
-// ControlRequest contains a verified service principal, never a header-selected role.
+// ControlRequest contains a verified service principal, never a header-selected role. SubmissionID
+// is the caller-chosen identity of one logical state change; when set, the same identity with the
+// same content replays the recorded response instead of reapplying.
 type ControlRequest struct {
 	Action, OperationID, EffectID, WorkspaceID, TicketID string
+	SubmissionID                                         string
 	Body                                                 Object
 	Service                                              *Claims
 	Identity                                             *Claims
@@ -31,9 +34,17 @@ func (s *Store) Control(ctx context.Context, r *ControlRequest) (Object, error) 
 		if strings.HasPrefix(r.Action, "lease_") {
 			return lease(t, r)
 		}
+		// Recovery reads need no lease: a replacement worker locates original executions before
+		// it can hold one, and reading fences nothing.
+		if r.Action == "clone_get" || r.Action == "clone_pending" {
+			return cloneCommand(t, r)
+		}
 		leaseValid(t, r)
 		if r.Action == "claim" {
 			return claim(t, r)
+		}
+		if isCloneAction(r.Action) {
+			return cloneCommand(t, r)
 		}
 		o := operation(t, r)
 		switch r.Action {
@@ -74,11 +85,15 @@ func lease(t *transaction, r *ControlRequest) Object {
 		}
 	} else {
 		leaseValid(t, r)
-		if r.Action == "lease_renew" {
+		switch r.Action {
+		case "lease_renew":
 			t.exec("UPDATE controller_leases SET expires_at=clock_timestamp()+interval '30 seconds' WHERE name='global'")
-		} else {
-			require(r.Action == "lease_release", 404, "not_found")
+		case "lease_release":
 			t.exec("UPDATE controller_leases SET expires_at=clock_timestamp() WHERE name='global'")
+		case "lease_check":
+			// Read-only: proves the caller holds the current lease without extending it.
+		default:
+			reject(404, "not_found")
 		}
 	}
 	return t.one("SELECT * FROM controller_leases WHERE name='global'")

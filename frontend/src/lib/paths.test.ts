@@ -37,6 +37,7 @@ describe('workspacePaths', () => {
     expect(p.issueDetail('42')).toBe('/w/acme/issues/42')
     expect(p.spaces).toBe('/w/acme/spaces')
     expect(p.members).toBe('/w/acme/settings/members')
+    expect(p.repositories).toBe('/w/acme/repositories')
     expect(workspaceUrlPrefix()).toBe('localhost:3000/w/')
   })
 })

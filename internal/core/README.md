@@ -16,6 +16,7 @@
 - **项目（Projects）**：由 `(tenant_id, owner_user_id)` 所有。每个项目都有一个关联的仓库 URL 和默认分支，并关联一条 `project_storage` 记录。
 - **工作区与任务（Workspaces & Tasks）**：每个项目至多拥有一个活跃的 `main` 主工作区（由 `one_main` 部分唯一索引强制约束）。其余工作区均为 `isolated` 隔离工作区，且与 `tasks` 保持 1:1 映射。
 - **操作与效果（Operations & Effects）**：状态变更（如创建项目、启动/停止工作区或删除）作为持久化 `operations` 执行（状态包括 `queued`、`running`、`retry_wait`、`blocked`、`done`、`failed`）。Operation 被分解为持久化 `effects`，表示由 Substrate 和 Controller 执行的外部任务。
+- **clone 请求（Clone Requests）**：由 `(tenant_id, actor_user_id, request_id)` 幂等接受的独立工作项，不挂在 operation/effect 模型上；Controller 经内部控制契约领取、登记派发（`clone_executions`）并接管 Node 结果（`clone_event_receipts`）。公开 `/clones` 路由只对提交者可见，`state` 由请求状态与执行结果投影而来。
 - **节点与会话（Nodes & Sessions）**：`workspace_nodes` 表示绑定到工作区的活动执行容器。`sessions` 跟踪用户的对话线程。
 
 ### 并发控制与锁机制

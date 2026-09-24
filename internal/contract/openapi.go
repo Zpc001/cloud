@@ -185,6 +185,15 @@ func Document() map[string]any {
 	s["EmptyClaim"] = object(obj{"operation": obj{"type": "object", "nullable": true, "enum": []any{nil}}}, "operation")
 	s["Access"] = object(obj{"userId": uuid(), "tenantId": uuid(), "workspaceId": uuid(), "allowedAction": enumeration("read", "execute"), "executable": boolean(), "runtimeGeneration": number()}, "userId", "tenantId", "workspaceId", "allowedAction", "executable", "runtimeGeneration")
 	s["IdleRefusal"] = object(obj{"accepted": boolean(), "errorCode": enumeration("resource_in_use")}, "accepted", "errorCode")
+	// Clone requests mirror the transitional Controller DTO: the tagged state carries the terminal
+	// fact, and identities assigned at dispatch are null until a Controller records it.
+	s["CloneState"] = object(obj{"kind": enumeration("pending", "succeeded", "failed"), "path": str(), "commit": str(), "reason": enumeration("sourceUnavailable", "branchNotFound", "destinationConflict", "operationFailed", "unspecified"), "retainedPath": str()}, "kind")
+	cloneProps := fields("operationId createdAt updatedAt")
+	for _, name := range []string{"requestId", "repository", "branch"} {
+		cloneProps[name] = str()
+	}
+	cloneProps["executionId"], cloneProps["nodeId"], cloneProps["state"] = optional(str()), optional(str()), ref("CloneState")
+	s["CloneOperation"] = object(cloneProps, "operationId", "requestId", "repository", "branch", "executionId", "nodeId", "state", "createdAt", "updatedAt")
 	paths := obj{}
 	for _, r := range router.Routes() {
 		path := r.Path
@@ -273,6 +282,8 @@ func tag(r router.Route) string {
 		return "internal"
 	case strings.HasPrefix(r.Path, "/api/v1/me"):
 		return "me"
+	case strings.Contains(r.Path, "/clones"):
+		return "clones"
 	case strings.Contains(r.Path, "/spaces"):
 		return "spaces"
 	case strings.Contains(r.Path, "/workspaces"):
@@ -288,7 +299,7 @@ func tag(r router.Route) string {
 }
 
 func isList(r router.Route) bool {
-	return r.Method == "GET" && (strings.HasSuffix(r.Path, "/tenants") || strings.HasSuffix(r.Path, "/members") || strings.HasSuffix(r.Path, "/projects") || strings.HasSuffix(r.Path, "/workspaces") || strings.HasSuffix(r.Path, "/spaces") || strings.HasSuffix(r.Path, "/resource-status") || strings.HasSuffix(r.Path, "/issue-statuses") || strings.HasSuffix(r.Path, "/labels") || strings.HasSuffix(r.Path, "/issue-views") || strings.HasSuffix(r.Path, "/comments") || strings.HasSuffix(r.Path, "/subscribers"))
+	return r.Method == "GET" && (strings.HasSuffix(r.Path, "/tenants") || strings.HasSuffix(r.Path, "/members") || strings.HasSuffix(r.Path, "/projects") || strings.HasSuffix(r.Path, "/workspaces") || strings.HasSuffix(r.Path, "/spaces") || strings.HasSuffix(r.Path, "/resource-status") || strings.HasSuffix(r.Path, "/issue-statuses") || strings.HasSuffix(r.Path, "/labels") || strings.HasSuffix(r.Path, "/issue-views") || strings.HasSuffix(r.Path, "/comments") || strings.HasSuffix(r.Path, "/subscribers") || strings.HasSuffix(r.Path, "/clones"))
 }
 
 func responseSchema(r router.Route) (schema obj, status string) {
@@ -419,6 +430,15 @@ func responseSchema(r router.Route) (schema obj, status string) {
 			return object(obj{"items": array(ref("Issue")), "nextCursor": str()}, "items", "nextCursor"), "200"
 		}
 		return ref("Issue"), "200"
+	case strings.Contains(r.Path, "/clones"):
+		switch {
+		case isList(r):
+			return object(obj{"items": array(ref("CloneOperation")), "nextCursor": str()}, "items", "nextCursor"), "200"
+		case r.Method == "GET":
+			return ref("CloneOperation"), "200"
+		default:
+			return ref("CloneOperation"), "202"
+		}
 	case r.Path == "/api/v1/tenants" && r.Method == "POST":
 		return ref("TenantCreated"), "201"
 	}
@@ -618,6 +638,9 @@ func description(r router.Route) string {
 	}
 	if r.Path == "/api/v1/tenants" && r.Method == "POST" {
 		base = "Public requests require a gateway service credential plus a caller-bound user credential. No tenant membership is required: the verified identity alone authorizes provisioning. Atomically creates a tenant named after the space, makes the caller its first administrator, creates the space with the given slug and makes the caller its owner. The tenant is an implicit container the product never shows. The idempotency key is matched per user across tenants and recorded under the created tenant. "
+	}
+	if strings.Contains(r.Path, "/clones") {
+		base += "Clone requests are independent accepted work items outside the project/workspace operation model: Cloud accepts them in its own transaction, a Controller claims and dispatches them over the internal control contract, and only the submitting user can read them. requestId is the caller's durable request identity: repeating it with the same repository and branch returns the original request, a different input is 409 idempotency_conflict. repository must be an https or ssh URL the Controller can clone; branch is a short branch name, never HEAD. executionId and nodeId are null until a dispatch is recorded; a pending state means awaiting reconciliation, never failure. "
 	}
 	if strings.Contains(r.Path, "members") && !strings.Contains(r.Path, "/spaces") {
 		base += "Administrator only. Updating an existing membership requires matching version; new membership uses version=0. Last effective administrator cannot be disabled/demoted, including concurrent changes. "

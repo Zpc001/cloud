@@ -26,6 +26,8 @@ collaboration:
   # addition to humans. Explicitly enabled; production default OFF. Independent of authentication —
   # enabling GitHub Auth never enables these fixtures. Override: CLOUD_COLLABORATION_DEVELOPMENT_FIXTURES=true.
   development_fixtures: false
+control:
+  grpc_addr: "127.0.0.1:8082" # Controller-facing gRPC, unauthenticated at this stage; loopback or private network only
 auth:
   audience: "ora-cloud"
   # Public keys of the local Gateway; generate them with `task setup` (config.toml). Production replaces

@@ -4,6 +4,7 @@ import {
   ChevronDown,
   CircuitBoard,
   Cog,
+  FolderGit2,
   Inbox,
   Layers,
   ListTodo,
@@ -48,6 +49,7 @@ import { workspacePaths } from '@/lib/paths'
 const workNav = [
   { to: (p: ReturnType<typeof workspacePaths>) => p.issues, label: '任务', icon: Layers },
   { to: (p: ReturnType<typeof workspacePaths>) => p.projects, label: '项目', icon: CircuitBoard },
+  { to: (p: ReturnType<typeof workspacePaths>) => p.repositories, label: '仓库', icon: FolderGit2 },
 ]
 
 const aiTeamNav = [

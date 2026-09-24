@@ -19,6 +19,7 @@ type Config struct {
 	Database      DatabaseConfig      `mapstructure:"database"`
 	Auth          AuthConfig          `mapstructure:"auth"`
 	Collaboration CollaborationConfig `mapstructure:"collaboration"`
+	Control       ControlConfig       `mapstructure:"control"`
 }
 
 // CollaborationConfig gates optional collaboration-capability wiring on the Store.
@@ -28,6 +29,13 @@ type CollaborationConfig struct {
 	// enabled: production must leave it false (default), in which case only human targets are
 	// served. It must never be coupled to whether an external login provider is enabled.
 	DevelopmentFixtures bool `mapstructure:"development_fixtures"`
+}
+
+// ControlConfig binds the Controller-facing gRPC listener. Until the authentication ADR adds TLS,
+// the address must stay on a loopback or private network; the contract carries bearer credentials
+// only.
+type ControlConfig struct {
+	GRPCAddr string `mapstructure:"grpc_addr"`
 }
 
 // AuthConfig contains only internal verification keys, never an external login SDK.
@@ -85,6 +93,9 @@ func Load(configPath string) (*Config, error) {
 	}
 	if cfg.Server.ReadTimeout <= 0 || cfg.Server.WriteTimeout <= 0 || cfg.Database.ConnMaxLifetime <= 0 {
 		return nil, fmt.Errorf("server timeouts and database.conn_max_lifetime must be positive durations")
+	}
+	if cfg.Control.GRPCAddr == "" {
+		return nil, fmt.Errorf("control.grpc_addr is required")
 	}
 
 	return &cfg, nil

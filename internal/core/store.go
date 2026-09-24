@@ -87,6 +87,10 @@ type Store struct {
 	// resource-sharing boundary), while an unscoped project keeps owner-based
 	// authorization.
 	Events *SpaceHub
+
+	// Signals carries at-most-once work hints to the lease-holding Controller's Watch stream;
+	// clone requests stay durable in PostgreSQL whether or not a hint is delivered.
+	Signals *ControlHub
 }
 
 // NewStore obtains the injected SQL pool without creating or migrating schema.
@@ -98,7 +102,7 @@ func NewStore(db *gorm.DB) (*Store, error) {
 	if err != nil {
 		return nil, fmt.Errorf("get database pool: %w", err)
 	}
-	return &Store{Pool: pool, Events: NewSpaceHub()}, nil
+	return &Store{Pool: pool, Events: NewSpaceHub(), Signals: NewControlHub()}, nil
 }
 
 type transaction struct {
