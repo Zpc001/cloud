@@ -6,15 +6,15 @@
 
 ## 数据归属
 
-- `plugin_sources`(0014):部署全局的市场源。默认源保留 `official` 命名空间,与 desktop 身份模型一致;
+- `plugin_sources`(0015):部署全局的市场源。默认源保留 `official` 命名空间,与 desktop 身份模型一致;
   `synced_at`/`sync_error` 记录新鲜度与最近一次失败,`enabled` 为将来多源预留。
-- `plugin_catalog_entries`(0014):同步产物,主键 `(source_namespace, identifier)`。**目录读取永远不出网**
+- `plugin_catalog_entries`(0015):同步产物,主键 `(source_namespace, identifier)`。**目录读取永远不出网**
   —— API 只读这张表,等价于 desktop 的 cache-only 语义。一次成功同步在单事务内 DELETE+INSERT 整源
   替换,读者看不到中间态;失败保留上一版快照。
-- `space_plugins`(0014):工作区插件选择状态(cloud 权威,与技能、智能体同级)。canonical identity =
+- `space_plugins`(0015):工作区插件选择状态(cloud 权威,与技能、智能体同级)。canonical identity =
   `(source_namespace, identifier)` 显式列,满足 execution-contract 的"显式版本化契约"要求。
   `desired_*` 是用户意图(安装时固定版本,D2),`observed_*` 是 fan-out 聚合事实,乐观 `version` 防并发。
-- `workspace_plugin_instances`(0014):fan-out 执行事实,每个 live 运行时 workspace 一行,复合外键继承
+- `workspace_plugin_instances`(0015):fan-out 执行事实,每个 live 运行时 workspace 一行,复合外键继承
   `(workspace_id, tenant_id, owner_user_id)` 与 `(workspace_id, project_id)`,防止跨租户引用。
 
 ## 同步(`internal/pluginmarket` + `cmd/server` 接线)
