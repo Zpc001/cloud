@@ -1,13 +1,16 @@
 import { useState } from 'react'
 import { useSearchParams } from 'react-router'
+import { toast } from 'sonner'
 import { Blocks, BookOpen, Download, ExternalLink, Puzzle } from 'lucide-react'
 import type { PluginCatalogEntry, SpacePlugin } from '@/api/generated.schemas'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Separator } from '@/components/ui/separator'
-import { useSettingsData } from '../data/hooks'
-import { pluginKey } from '../data/types'
-import { setPluginInstalled } from '../data/resource-actions'
+import {
+  pluginInstalled,
+  pluginKey,
+  usePluginMarketplace,
+} from '../data/marketplace'
 import {
   ActionError,
   DataState,
@@ -29,6 +32,7 @@ const kindLabels: Record<string, string> = {
   workbench: '工作台',
   pack: '合集',
 }
+
 const stateLabels: Record<string, string> = {
   installed: '已安装',
   failed: '安装失败',
@@ -37,12 +41,7 @@ const stateLabels: Record<string, string> = {
   removing: '移除中',
   removed: '未安装',
 }
-function installed(selection?: SpacePlugin) {
-  return (
-    selection?.desiredState === 'installed' &&
-    selection.observedState === 'installed'
-  )
-}
+
 function StateBadge({ selection }: { selection?: SpacePlugin }) {
   const state = selection?.observedState ?? 'removed'
   return (
@@ -61,39 +60,41 @@ function StateBadge({ selection }: { selection?: SpacePlugin }) {
 }
 
 export default function PluginsPage() {
-  const { query, mutation, save, user, canManage } = useSettingsData()
+  const market = usePluginMarketplace()
   const [search, setSearch] = useState('')
   const [kind, setKind] = useState('all')
   const [status, setStatus] = useState('all')
   const [order, setOrder] = useState('asc')
-  const [removing, setRemoving] = useState<PluginCatalogEntry>()
+  const [removing, setRemoving] = useState<{
+    entry: PluginCatalogEntry
+    selection: SpacePlugin
+  }>()
   const [params, setParams] = useSearchParams()
-  const data = query.data
-  const selection = (key: string) =>
-    data?.installations.find((p) => pluginKey(p) === key)
-  const selected = data?.catalog.find(
-    (p) => pluginKey(p) === params.get('plugin') && p.kind !== 'agent',
+  const catalog = market.catalog.filter((entry) => entry.kind !== 'agent')
+  const selected = catalog.find(
+    (entry) =>
+      pluginKey(entry) === params.get('plugin') && entry.kind !== 'agent',
   )
-  const catalog = (data?.catalog ?? []).filter((p) => p.kind !== 'agent')
   const filtered = catalog
-    .filter((p) => {
-      const chosen = selection(pluginKey(p))
+    .filter((entry) => {
+      const selection = market.selection(entry)
       return (
-        `${p.title} ${p.description} ${pluginKey(p)}`
+        `${entry.title} ${entry.description} ${pluginKey(entry)}`
           .toLowerCase()
           .includes(search.trim().toLowerCase()) &&
-        (kind === 'all' || p.kind === kind) &&
+        (kind === 'all' || entry.kind === kind) &&
         (status === 'all' ||
           (status === 'installed'
-            ? installed(chosen)
+            ? pluginInstalled(selection)
             : status === 'failed'
-              ? chosen?.observedState === 'failed'
-              : !chosen || chosen.observedState === 'removed'))
+              ? selection?.observedState === 'failed'
+              : !selection || selection.observedState === 'removed'))
       )
     })
     .sort(
       (a, b) =>
-        (order === 'asc' ? 1 : -1) * a.title.localeCompare(b.title, 'zh-CN'),
+        (order === 'asc' ? 1 : -1) *
+        a.title.localeCompare(b.title, 'zh-CN'),
     )
   const clear = () => {
     setSearch('')
@@ -101,46 +102,58 @@ export default function PluginsPage() {
     setStatus('all')
   }
   const open = (entry: PluginCatalogEntry) => {
-    mutation.reset()
     setParams({ plugin: pluginKey(entry) })
   }
-  const install = (entry: PluginCatalogEntry) =>
-    save(
-      (draft) => setPluginInstalled(draft, user, pluginKey(entry), true),
-      '已在演示中安装插件',
-    )
-  const remove = (entry: PluginCatalogEntry) => {
-    mutation.reset()
-    setRemoving(entry)
+  const install = (entry: PluginCatalogEntry) => {
+    void market
+      .install(entry)
+      .then(() => toast.success(`已安装 ${entry.title}`))
+      .catch(() => undefined)
+  }
+  const requestRemove = (entry: PluginCatalogEntry) => {
+    const selection = market.selection(entry)
+    if (selection) setRemoving({ entry, selection })
+  }
+  const confirmRemove = () => {
+    if (!removing) return
+    void market
+      .remove(removing.selection)
+      .then(() => {
+        toast.success(`已移除 ${removing.entry.title}`)
+        setRemoving(undefined)
+      })
+      .catch(() => undefined)
   }
   function actions(entry: PluginCatalogEntry) {
-    const chosen = selection(pluginKey(entry))
+    const selection = market.selection(entry)
     if (entry.kind === 'pack')
       return (
-        <span className="text-xs text-muted-foreground">合集安装尚未支持</span>
+        <span className="text-xs text-muted-foreground">
+          合集安装尚未支持
+        </span>
       )
     const busy =
-      mutation.isPending ||
-      chosen?.observedState === 'installing' ||
-      chosen?.observedState === 'removing'
-    return installed(chosen) ? (
+      market.mutating ||
+      selection?.observedState === 'installing' ||
+      selection?.observedState === 'removing'
+    return pluginInstalled(selection) ? (
       <Button
         size="sm"
         variant="outline"
-        disabled={!canManage || busy}
-        onClick={() => remove(entry)}
+        disabled={!market.canManage || busy}
+        onClick={() => requestRemove(entry)}
       >
-        模拟移除
+        移除
       </Button>
     ) : (
       <Button
         size="sm"
-        variant={chosen?.observedState === 'failed' ? 'outline' : 'secondary'}
-        disabled={!canManage || busy}
+        variant={selection?.observedState === 'failed' ? 'outline' : 'secondary'}
+        disabled={!market.canManage || busy}
         onClick={() => install(entry)}
       >
         <Download data-icon="inline-start" />
-        {chosen?.observedState === 'failed' ? '重试演示安装' : '模拟安装'}
+        {selection?.observedState === 'failed' ? '重试安装' : '安装'}
       </Button>
     )
   }
@@ -148,17 +161,17 @@ export default function PluginsPage() {
     <section>
       <PageHeader
         title="Plugins"
-        description="浏览插件，管理演示工作空间中的安装选择与版本。"
+        description="浏览并管理空间插件；安装状态保存在服务端，刷新、换浏览器和服务重启后仍保留。"
         count={catalog.length}
       />
       <DataState
-        pending={query.isPending}
-        error={query.error}
-        retry={() => void query.refetch()}
+        pending={market.pending}
+        error={market.error}
+        retry={() => void market.refetch()}
       >
-        {!canManage && data && (
+        {!market.canManage && (
           <p className="text-sm text-muted-foreground">
-            当前演示成员为只读角色；安装与移除需要管理员权限。
+            当前账号为只读成员；安装与移除需要工作区 owner 权限。
           </p>
         )}
         <div className="settings-toolbar">
@@ -169,8 +182,9 @@ export default function PluginsPage() {
             onChange={setKind}
             options={[
               ['all', '全部类型'],
-              ...[...new Set(catalog.map((p) => p.kind))].map(
-                (k) => [k, kindLabels[k] ?? k] as const,
+              ...[...new Set(catalog.map((entry) => entry.kind))].map(
+                (value) =>
+                  [value, kindLabels[value] ?? value] as const,
               ),
             ]}
           />
@@ -195,7 +209,7 @@ export default function PluginsPage() {
             ]}
           />
         </div>
-        <ActionError error={mutation.error} />
+        <ActionError error={market.mutationError} />
         <div className="settings-resource-list">
           {filtered.map((entry) => (
             <article
@@ -226,14 +240,14 @@ export default function PluginsPage() {
                   <span className="settings-resource-meta">
                     <span>{kindLabels[entry.kind]}</span>
                     <span aria-hidden="true">·</span>
-                    <span>演示目录</span>
+                    <span>{entry.sourceNamespace}</span>
                     <span aria-hidden="true">·</span>
                     <span>v{entry.version}</span>
                   </span>
                 </span>
               </button>
               <div className="settings-resource-actions">
-                <StateBadge selection={selection(pluginKey(entry))} />
+                <StateBadge selection={market.selection(entry)} />
                 {actions(entry)}
               </div>
             </article>
@@ -245,12 +259,18 @@ export default function PluginsPage() {
         <div className="settings-list-footer">
           <span>
             显示 {filtered.length} / {catalog.length} 个插件 · 共{' '}
-            {data?.installations.filter(installed).length ?? 0} 个已安装
+            {
+              market.installations.filter(
+                (selection) =>
+                  selection.kind !== 'agent' && pluginInstalled(selection),
+              ).length
+            }{' '}
+            个已安装
           </span>
-          <span>安装与移除均为本机演示</span>
+          <span>保存空间选择，不下载或执行插件包</span>
         </div>
       </DataState>
-      {params.has('plugin') && data && !selected && (
+      {params.has('plugin') && !market.pending && !selected && (
         <p role="alert" className="mt-4 text-sm text-muted-foreground">
           找不到该插件。
           <Button variant="link" onClick={() => setParams({})}>
@@ -265,10 +285,10 @@ export default function PluginsPage() {
           onClose={() => setParams({}, { replace: true })}
         >
           <div className="flex flex-wrap items-center justify-between gap-3">
-            <StateBadge selection={selection(pluginKey(selected))} />
+            <StateBadge selection={market.selection(selected)} />
             {actions(selected)}
           </div>
-          <ActionError error={mutation.error} />
+          <ActionError error={market.mutationError} />
           <dl className="settings-facts">
             <dt>插件标识</dt>
             <dd>{pluginKey(selected)}</dd>
@@ -278,26 +298,29 @@ export default function PluginsPage() {
             <dd>{selected.version}</dd>
             <dt>安装选择</dt>
             <dd>
-              {selection(pluginKey(selected))?.desiredState === 'installed'
-                ? '安装 ' + selection(pluginKey(selected))?.desiredVersion
+              {market.selection(selected)?.desiredState === 'installed'
+                ? `安装 ${market.selection(selected)?.desiredVersion}`
                 : '未选择'}
             </dd>
             <dt>安装结果</dt>
             <dd>
-              {selection(pluginKey(selected))?.observedVersion ?? '尚未安装'}
+              {market.selection(selected)?.observedVersion ?? '尚未安装'}
             </dd>
             <dt>来源</dt>
-            <dd>演示目录 · {selected.sourceNamespace}</dd>
+            <dd>
+              {selected.sourceNamespace} · {selected.sourceUrl}
+            </dd>
             <dt>许可证</dt>
             <dd>{selected.license ?? '未提供'}</dd>
           </dl>
-          {selection(pluginKey(selected))?.installError && (
+          {market.selection(selected)?.installError && (
             <p role="alert" className="text-sm text-destructive">
-              {selection(pluginKey(selected))?.installError}
+              {market.selection(selected)?.installError}
             </p>
           )}
           <p className="rounded-lg bg-muted p-3 text-xs leading-relaxed text-muted-foreground">
-            此处只演示安装选择。插件运行、启停与配置能力尚未接入。
+            这里保存 v1 契约中的空间插件选择与最终状态。v2
+            临时后端没有通用插件执行器，因此不会下载或运行包内代码。
           </p>
           <Separator />
           <MarkdownPreview content={selected.readme ?? ''} />
@@ -316,24 +339,17 @@ export default function PluginsPage() {
       )}
       {removing && (
         <ConfirmDialog
-          title={`移除 ${removing.title}？`}
+          title={`移除 ${removing.entry.title}？`}
           description={
-            removing.kind === 'skill'
-              ? '将移除演示安装，其提供的技能会变为不可用。自建技能不受影响，重新安装可恢复。'
-              : '只移除此浏览器中的演示安装，不会卸载任何真实软件。'
+            removing.entry.kind === 'skill'
+              ? '将从空间卸载该技能包，其提供的技能立即变为不可用；重新安装可恢复。'
+              : '将从空间移除该插件选择。此操作不会卸载其他工作空间或 Agent 运行时中的包。'
           }
-          confirmLabel="模拟移除"
-          pending={mutation.isPending}
-          error={mutation.error}
+          confirmLabel="移除"
+          pending={market.mutating}
+          error={market.mutationError}
           onClose={() => setRemoving(undefined)}
-          onConfirm={() =>
-            save(
-              (draft) =>
-                setPluginInstalled(draft, user, pluginKey(removing), false),
-              '已在演示中移除插件',
-              () => setRemoving(undefined),
-            )
-          }
+          onConfirm={confirmRemove}
         />
       )}
     </section>

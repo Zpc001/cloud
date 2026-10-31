@@ -1,11 +1,8 @@
 import type {
   ModelConnection,
   ModelDefault,
-  PluginCatalogEntry,
-  SpacePlugin,
 } from '@/api/generated.schemas'
 
-export const DEMO_TENANT = 'settings-demo-tenant'
 export const DEMO_SPACE = 'settings-demo-space'
 /** The signed-in account as the demo pages need it; only the real role decides administration. */
 export interface DemoUser {
@@ -30,12 +27,10 @@ export interface Skill {
  * and the only role that reaches these pages is the signed-in one.
  */
 export interface Snapshot {
-  schema: 2
+  schema: 3
   revision: number
   connections: ModelConnection[]
   modelDefault: ModelDefault
-  catalog: PluginCatalogEntry[]
-  installations: SpacePlugin[]
   skills: Skill[]
 }
 export type ConnectionDraft = Pick<
@@ -43,8 +38,3 @@ export type ConnectionDraft = Pick<
   'name' | 'protocol' | 'authMode' | 'baseUrl' | 'enabled' | 'models'
 >
 export type SkillDraft = Pick<Skill, 'name' | 'description' | 'content'>
-/** Catalog row ids and selection row ids are unrelated; this pair identifies the package. */
-export const pluginKey = (plugin: {
-  sourceNamespace: string
-  identifier: string
-}) => `${plugin.sourceNamespace}/${plugin.identifier}`

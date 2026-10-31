@@ -21,7 +21,7 @@ export type WorkspaceRole = 'owner' | 'member'
  */
 export function useRole(): WorkspaceRole | null {
   const tenants = useGetApiV1MeTenants()
-  const role = tenants.data?.items[0]?.role
+  const role = tenants.data?.items?.[0]?.role
   return role === 'owner' || role === 'member' ? role : null
 }
 

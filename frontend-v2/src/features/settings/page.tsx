@@ -16,8 +16,13 @@ export default function SettingsPage() {
   const { repository, queryKey, reset } = useSettingsData()
   const client = useQueryClient()
   const themePage = location.pathname === '/settings/theme'
-  // The members page reads and writes the real workspace, so the local-demo notice would lie there.
-  const demoPage = !themePage && location.pathname !== '/settings/members'
+  // Plugins and members are real server resources. Skills mixes server market skills with local
+  // documents, while model connections remain browser-local.
+  const localDemoPage = [
+    '/settings/model-connections',
+    '/settings/skills',
+  ].includes(location.pathname)
+  const mixedDataPage = location.pathname === '/settings/skills'
   const navigation = useRef<HTMLElement>(null)
   useEffect(() => {
     const keepCurrentVisible = () =>
@@ -80,20 +85,34 @@ export default function SettingsPage() {
             }
           </span>
           <span className="text-xs">
-            {themePage ? '浏览器偏好' : demoPage ? '演示工作空间' : '工作空间成员'}
+            {themePage
+              ? '浏览器偏好'
+              : location.pathname === '/settings/plugins'
+                ? '工作空间资源'
+                : location.pathname === '/settings/skills'
+                  ? '服务端目录与本地技能'
+                  : location.pathname === '/settings/model-connections'
+                    ? '演示工作空间'
+                    : '工作空间成员'}
           </span>
         </div>
         <div className="settings-content">
-          {demoPage && (
+          {localDemoPage && (
             <div className="settings-demo-notice">
               <FlaskConical
                 className="mt-0.5 size-4 shrink-0"
                 aria-hidden="true"
               />
               <div className="min-w-0 flex-1">
-                <p className="font-medium">演示数据，仅保存在此浏览器</p>
+                <p className="font-medium">
+                  {mixedDataPage
+                    ? '市场技能来自服务端，自建技能保存在此浏览器'
+                    : '演示数据，仅保存在此浏览器'}
+                </p>
                 <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
-                  操作不会修改在线资源、邀请真实成员或运行插件。每个登录用户独立保存。
+                  {mixedDataPage
+                    ? '安装与移除会修改当前工作空间的市场选择；新建、编辑或删除自建技能只影响当前登录用户。'
+                    : '操作不会调用模型或修改在线资源。每个登录用户独立保存。'}
                 </p>
               </div>
               <Button
@@ -115,7 +134,7 @@ export default function SettingsPage() {
       {confirming && (
         <ConfirmDialog
           title="重置演示数据？"
-          description="将清除当前用户在此浏览器中的模型连接、插件和技能演示修改，恢复初始示例。主题偏好不受影响。"
+          description="将清除当前用户在此浏览器中的模型连接和自建技能修改，恢复初始示例。主题、工作空间插件与市场技能不受影响。"
           confirmLabel="重置演示"
           pending={reset.isPending}
           error={reset.error}

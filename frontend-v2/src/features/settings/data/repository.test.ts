@@ -7,7 +7,6 @@ import {
   saveConnection,
   saveSkill,
   setModelDefault,
-  setPluginInstalled,
   validateConnection,
 } from './resource-actions'
 import type { ConnectionDraft } from './types'
@@ -94,70 +93,10 @@ describe('settings demo persistence', () => {
   })
 })
 
-describe('plugins and document skills', () => {
-  it('joins by package identity, keeps separate record ids, and restores package skills', async () => {
+describe('document skills', () => {
+  it('supports local editing, validation and deletion', async () => {
     const repo = repository()
     let state = await repo.read()
-    const catalog = state.catalog.find((p) => p.identifier === 'writing-kit')!
-    expect(
-      state.installations.find((p) => p.identifier === 'writing-kit')!.id,
-    ).not.toBe(catalog.id)
-    state = await repo.update(state.revision, (data) =>
-      setPluginInstalled(data, user, 'demo/writing-kit', false),
-    )
-    expect(
-      state.skills.find((s) => s.source.kind === 'plugin')?.availability,
-    ).toBe('unavailable')
-    expect(
-      state.skills
-        .filter((s) => s.source.kind === 'local')
-        .every((s) => s.availability === 'available'),
-    ).toBe(true)
-    state = await repo.update(state.revision, (data) =>
-      setPluginInstalled(data, user, 'demo/writing-kit', true),
-    )
-    expect(state.skills.filter((s) => s.source.kind === 'plugin')).toHaveLength(
-      1,
-    )
-    expect(
-      state.skills.find((s) => s.source.kind === 'plugin')?.availability,
-    ).toBe('available')
-  })
-  it('clears an installation failure on retry and forbids unsupported pack installation', async () => {
-    const repo = repository()
-    let state = await repo.read()
-    state = await repo.update(state.revision, (data) =>
-      setPluginInstalled(data, user, 'demo/browser-tools', true),
-    )
-    expect(
-      state.installations.find((p) => p.identifier === 'browser-tools'),
-    ).toMatchObject({
-      desiredState: 'installed',
-      observedState: 'installed',
-      installError: null,
-    })
-    await expect(
-      repo.update(state.revision, (data) =>
-        setPluginInstalled(data, user, 'demo/starter-pack', true),
-      ),
-    ).rejects.toThrow('不支持')
-  })
-  it('supports local editing and deletion but refuses changes to package content', async () => {
-    const repo = repository()
-    let state = await repo.read()
-    const packageSkill = state.skills.find((s) => s.source.kind === 'plugin')!
-    await expect(
-      repo.update(state.revision, (data) => deleteSkill(data, packageSkill.id)),
-    ).rejects.toThrow('自建')
-    await expect(
-      repo.update(state.revision, (data) =>
-        saveSkill(
-          data,
-          { name: 'changed', description: '', content: '' },
-          packageSkill.id,
-        ),
-      ),
-    ).rejects.toThrow('只读')
     state = await repo.update(state.revision, (data) =>
       saveSkill(
         data,
@@ -178,31 +117,46 @@ describe('plugins and document skills', () => {
     )
     expect(state.skills.some((s) => s.id === 'local-test-plan')).toBe(false)
   })
-})
-
-describe('demo writes follow the real workspace role', () => {
-  it('lets the owner manage plugins and refuses a member', async () => {
-    const repo = repository()
-    let state = await repo.read()
-    state = await repo.update(state.revision, (data) =>
-      setPluginInstalled(data, user, 'demo/review-kit', true),
-    )
-    expect(
-      state.installations.find((p) => p.identifier === 'review-kit')
-        ?.desiredState,
-    ).toBe('installed')
-    const member = { ...user, role: 'member' as const }
-    await expect(
-      repo.update(state.revision, (data) =>
-        setPluginInstalled(data, member, 'demo/browser-tools', false),
-      ),
-    ).rejects.toThrow('owner')
-  })
   it('keeps no roster, invitations or join history in browser storage', async () => {
     const state = await repository().read()
-    expect(state.schema).toBe(2)
+    expect(state.schema).toBe(3)
+    expect(state).not.toHaveProperty('catalog')
+    expect(state).not.toHaveProperty('installations')
     for (const field of ['members', 'history', 'links', 'requests'])
       expect(state).not.toHaveProperty(field)
+  })
+  it('upgrades schema 2 without keeping its local marketplace mirror', async () => {
+    const repo = repository()
+    const initial = await repo.read()
+    values.set(
+      repo.key,
+      JSON.stringify({
+        ...initial,
+        schema: 2,
+        catalog: [{ id: 'stale' }],
+        installations: [{ id: 'stale-selection' }],
+        skills: [
+          ...initial.skills,
+          {
+            id: 'stale-plugin-skill',
+            namespace: 'demo',
+            name: 'stale',
+            description: '',
+            content: '',
+            source: { kind: 'plugin', pluginId: 'demo/stale' },
+            availability: 'available',
+          },
+        ],
+      }),
+    )
+    const upgraded = await repo.read()
+    expect(upgraded.schema).toBe(3)
+    expect(upgraded).not.toHaveProperty('catalog')
+    expect(upgraded).not.toHaveProperty('installations')
+    expect(
+      upgraded.skills.every((skill) => skill.source.kind === 'local'),
+    ).toBe(true)
+    expect(JSON.parse(values.get(repo.key) ?? '{}').schema).toBe(3)
   })
 })
 

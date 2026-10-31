@@ -58,15 +58,22 @@ test('settings subroutes, refresh, history and the existing shell remain navigab
   }
 })
 
-test('plugin removal and reinstallation update readonly skills and survive reload', async ({
+test('server-backed plugin and skill install lifecycle survives reload and a new browser context', async ({
   page,
+  browser,
 }) => {
   await login(page, '/settings/plugins')
   const row = page.getByRole('article', { name: '写作工具箱' })
-  await row.getByRole('button', { name: '模拟移除' }).click()
+  await expect(row).toBeVisible()
+  const install = row.getByRole('button', { name: /^(安装|重试安装)$/ })
+  if (await install.count()) {
+    await install.click()
+    await expect(row.getByText('已安装', { exact: true })).toBeVisible()
+  }
+  await row.getByRole('button', { name: '移除' }).click()
   await page
     .getByRole('alertdialog')
-    .getByRole('button', { name: '模拟移除' })
+    .getByRole('button', { name: '移除' })
     .click()
   await expect(row.getByText('未安装', { exact: true })).toBeVisible()
   await page.goto('/settings/skills')
@@ -81,7 +88,7 @@ test('plugin removal and reinstallation update readonly skills and survive reloa
   await page.getByRole('link', { name: /demo\/writing-kit/ }).click()
   await page
     .getByRole('dialog')
-    .getByRole('button', { name: '模拟安装' })
+    .getByRole('button', { name: '安装' })
     .click()
   await expect(
     page.getByRole('dialog').getByText('已安装', { exact: true }),
@@ -89,6 +96,31 @@ test('plugin removal and reinstallation update readonly skills and survive reloa
   await page.keyboard.press('Escape')
   await expect(page.getByRole('dialog')).toHaveCount(0)
   await page.goto('/settings/skills')
+  await expect(skill.getByText('可用', { exact: true })).toBeVisible()
+  await page.reload()
+  await expect(skill.getByText('可用', { exact: true })).toBeVisible()
+
+  // A separate browser context has no local settings data and still reads the same server state.
+  const other = await browser.newContext({ baseURL: new URL(page.url()).origin })
+  const otherPage = await other.newPage()
+  await login(otherPage, '/settings/skills')
+  await expect(
+    otherPage.getByRole('article', { name: 'writing-guide' }).getByText('可用', {
+      exact: true,
+    }),
+  ).toBeVisible()
+  await other.close()
+
+  // Skill removal is the same package selection, not a second local-only state machine.
+  await skill.getByRole('button', { name: '移除技能' }).click()
+  await page
+    .getByRole('alertdialog')
+    .getByRole('button', { name: '移除技能' })
+    .click()
+  await expect(skill.getByText('来源插件未安装')).toBeVisible()
+  await page.reload()
+  await expect(skill.getByText('来源插件未安装')).toBeVisible()
+  await skill.getByRole('button', { name: '安装技能' }).click()
   await expect(skill.getByText('可用', { exact: true })).toBeVisible()
 })
 
@@ -143,11 +175,13 @@ test('theme survives reload and follows system changes across existing pages', a
   await expect(
     page.getByRole('heading', { name: '定时任务', exact: true }),
   ).toBeVisible()
+  await expect(page.locator('.schedules-feature')).toBeVisible()
   const darkSurface = await page
     .locator('.schedules-feature')
     .evaluate((el) => getComputedStyle(el).backgroundColor)
   await theme(page, '浅色')
   await page.goto('/schedules')
+  await expect(page.locator('.schedules-feature')).toBeVisible()
   const lightSurface = await page
     .locator('.schedules-feature')
     .evaluate((el) => getComputedStyle(el).backgroundColor)
