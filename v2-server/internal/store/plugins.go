@@ -15,7 +15,9 @@ import (
 
 // Plugin marketplace errors. The HTTP layer maps these stable outcomes to Cloud error codes.
 var (
+	ErrInvalidPluginID          = errors.New("invalid plugin id")
 	ErrPluginNotFound           = errors.New("plugin not found")
+	ErrPluginVersionUnavailable = errors.New("plugin version unavailable")
 	ErrPluginNotInstalled       = errors.New("plugin not installed")
 	ErrPluginKindNotInstallable = errors.New("plugin kind not installable")
 	ErrIdempotencyConflict      = errors.New("idempotency key reused")
@@ -213,7 +215,7 @@ func (s *Store) InstallSpacePlugin(ctx context.Context, tenant, space, caller, p
 		}
 		namespace, identifier, ok := pluginIdentity(in.Identifier)
 		if !ok {
-			return ErrPluginNotFound
+			return ErrInvalidPluginID
 		}
 		var kind, version string
 		var raw []byte
@@ -234,7 +236,7 @@ func (s *Store) InstallSpacePlugin(ctx context.Context, tenant, space, caller, p
 			desired = version
 		}
 		if desired != version {
-			return ErrPluginNotFound
+			return ErrPluginVersionUnavailable
 		}
 		var entry PluginCatalogEntry
 		if e := json.Unmarshal(raw, &entry); e != nil {
@@ -300,7 +302,7 @@ func (s *Store) RemoveSpacePlugin(ctx context.Context, tenant, space, caller, pa
 		}
 		namespace, identifier, ok := pluginIdentity(in.Identifier)
 		if !ok {
-			return ErrPluginNotFound
+			return ErrInvalidPluginID
 		}
 		old, e := querySpacePlugin(ctx, tx, space, namespace, identifier, true)
 		if e != nil {

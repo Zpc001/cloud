@@ -124,8 +124,12 @@ func pluginError(w http.ResponseWriter, operation string, e error) {
 	switch {
 	case errors.Is(e, store.ErrForbidden):
 		fault(w, http.StatusForbidden, "forbidden")
+	case errors.Is(e, store.ErrInvalidPluginID):
+		fault(w, http.StatusBadRequest, "invalid_plugin_id")
 	case errors.Is(e, store.ErrPluginNotFound):
 		fault(w, http.StatusNotFound, "plugin_not_found")
+	case errors.Is(e, store.ErrPluginVersionUnavailable):
+		fault(w, http.StatusBadRequest, "plugin_version_unavailable")
 	case errors.Is(e, store.ErrPluginNotInstalled):
 		fault(w, http.StatusNotFound, "plugin_not_installed")
 	case errors.Is(e, store.ErrPluginKindNotInstallable):

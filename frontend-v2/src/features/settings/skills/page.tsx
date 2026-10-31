@@ -111,12 +111,14 @@ export default function SkillsPage() {
   const create = () => open({ kind: 'create' })
   const install = (skill: SkillRow) => {
     if (!skill.entry) return
+    market.resetErrors()
     void market
       .install(skill.entry)
       .then(() => toast.success(`已安装技能 ${skill.name}`))
       .catch(() => undefined)
   }
   const requestPluginRemove = (skill: SkillRow) => {
+    market.resetErrors()
     if (skill.selection) setRemoving({ kind: 'plugin', skill })
   }
   const confirmPluginRemove = () => {

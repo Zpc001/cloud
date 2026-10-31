@@ -115,6 +115,10 @@ export function usePluginMarketplace() {
       selections.error,
     mutationError: install.error ?? remove.error,
     mutating: install.isPending || remove.isPending,
+    resetErrors: () => {
+      install.reset()
+      remove.reset()
+    },
     install: install.mutateAsync,
     remove: remove.mutateAsync,
     refetch: async () => {

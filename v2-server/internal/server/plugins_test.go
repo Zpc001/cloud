@@ -72,6 +72,22 @@ func TestPluginMarketHTTP(t *testing.T) {
 	}
 
 	status, body = c.doHeaders("POST", base, map[string]any{
+		"identifier": "not-a-plugin",
+		"version":    0,
+	}, map[string]string{"Idempotency-Key": "invalid-plugin-id"})
+	if status != 400 || body["code"] != "invalid_plugin_id" {
+		t.Fatalf("invalid id = %d %v", status, body)
+	}
+	status, body = c.doHeaders("POST", base, map[string]any{
+		"identifier":    "demo/writing-kit",
+		"pluginVersion": "9.9.9",
+		"version":       0,
+	}, map[string]string{"Idempotency-Key": "missing-plugin-version"})
+	if status != 400 || body["code"] != "plugin_version_unavailable" {
+		t.Fatalf("unavailable version = %d %v", status, body)
+	}
+
+	status, body = c.doHeaders("POST", base, map[string]any{
 		"identifier": "demo/starter-pack",
 		"version":    0,
 	}, map[string]string{"Idempotency-Key": "install-pack"})

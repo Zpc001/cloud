@@ -105,12 +105,14 @@ export default function PluginsPage() {
     setParams({ plugin: pluginKey(entry) })
   }
   const install = (entry: PluginCatalogEntry) => {
+    market.resetErrors()
     void market
       .install(entry)
       .then(() => toast.success(`已安装 ${entry.title}`))
       .catch(() => undefined)
   }
   const requestRemove = (entry: PluginCatalogEntry) => {
+    market.resetErrors()
     const selection = market.selection(entry)
     if (selection) setRemoving({ entry, selection })
   }
