@@ -44,6 +44,10 @@ func newContractClient(t *testing.T, base string) *contractClient {
 }
 
 func (c *contractClient) do(method, path string, body any) (int, map[string]any) {
+	return c.doHeaders(method, path, body, nil)
+}
+
+func (c *contractClient) doHeaders(method, path string, body any, headers map[string]string) (int, map[string]any) {
 	c.t.Helper()
 	var reader io.Reader
 	if body != nil {
@@ -55,6 +59,9 @@ func (c *contractClient) do(method, path string, body any) (int, map[string]any)
 		c.t.Fatal(e)
 	}
 	req.Header.Set("Content-Type", "application/json")
+	for key, value := range headers {
+		req.Header.Set(key, value)
+	}
 	res, e := c.http.Do(req)
 	if e != nil {
 		c.t.Fatal(e)

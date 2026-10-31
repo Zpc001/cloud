@@ -43,9 +43,9 @@ type Space struct {
 	ArchivedAt  *time.Time `json:"archivedAt"`
 }
 
-// SpacePlugin mirrors the contract's SpacePlugin for a plugin installed in a space. Every row in
-// v2_space_agents is an agent plugin, so Kind is always "agent"; install counts and the requesting
-// user are not tracked and stay zero.
+// SpacePlugin mirrors the contract's SpacePlugin for a package selected in a space. The table
+// predates the general marketplace and keeps its historical name; Kind now distinguishes agents
+// from market packages, while aggregate runtime counts stay absent in this single-process backend.
 type SpacePlugin struct {
 	ID                string    `json:"id"`
 	SpaceID           string    `json:"spaceId"`
@@ -56,7 +56,7 @@ type SpacePlugin struct {
 	DesiredState      string    `json:"desiredState"`
 	DesiredVersion    string    `json:"desiredVersion"`
 	ObservedState     string    `json:"observedState"`
-	ObservedVersion   string    `json:"observedVersion"`
+	ObservedVersion   *string   `json:"observedVersion"`
 	RequestedByUserID *string   `json:"requestedByUserId"`
 	InstallError      *string   `json:"installError"`
 	Version           int64     `json:"version"`
@@ -112,29 +112,7 @@ func (s *Store) SpaceAgentPlugins(ctx context.Context, tenant, space, caller str
 	if !owned {
 		return nil, ErrNotFound
 	}
-	rows, e := s.pool.Query(ctx, `
-		SELECT id, source_namespace, identifier, desired_state, desired_version,
-			observed_state, observed_version, version, created_at, updated_at
-		FROM v2_space_agents
-		WHERE space_id = $1 AND tenant_id = $2 AND status = 'active' AND observed_state = 'installed'
-		ORDER BY name, id`, space, tenant)
-	if e != nil {
-		return nil, fmt.Errorf("list space plugins: %w", e)
-	}
-	defer rows.Close()
-	items := make([]SpacePlugin, 0)
-	for rows.Next() {
-		p := SpacePlugin{SpaceID: space, TenantID: tenant, Kind: "agent"}
-		if e := rows.Scan(&p.ID, &p.SourceNamespace, &p.Identifier, &p.DesiredState, &p.DesiredVersion,
-			&p.ObservedState, &p.ObservedVersion, &p.Version, &p.CreatedAt, &p.UpdatedAt); e != nil {
-			return nil, fmt.Errorf("scan space plugin: %w", e)
-		}
-		items = append(items, p)
-	}
-	if e := rows.Err(); e != nil {
-		return nil, fmt.Errorf("iterate space plugins: %w", e)
-	}
-	return items, nil
+	return querySpacePlugins(ctx, s.pool, space, true)
 }
 
 // ensureDemoSpace gives a demo tenant its space and the installed agent plugins the runtimes use.

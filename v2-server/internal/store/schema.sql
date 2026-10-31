@@ -103,9 +103,22 @@ CREATE TABLE IF NOT EXISTS v2_spaces (
 	UNIQUE (tenant_id, slug)
 );
 
+-- The temporary marketplace snapshot. v2 does not run the marketplace Git sync loop; these rows
+-- are seeded with the same PluginCatalogEntry shape Cloud serves from its PostgreSQL snapshot.
+CREATE TABLE IF NOT EXISTS v2_plugin_catalog (
+	source_namespace text NOT NULL,
+	identifier       text NOT NULL,
+	kind             text NOT NULL,
+	version          text NOT NULL,
+	data             jsonb NOT NULL,
+	synced_at        timestamptz NOT NULL,
+	PRIMARY KEY (source_namespace, identifier)
+);
+
 -- The v2 stand-in for the shared Space Agent directory: one row per plugin installed in a space.
--- Agent squad members reference the id of a row whose observed state is installed. The columns
--- mirror the contract's SpacePlugin so the read route can answer without a translation layer.
+-- Agent squad members reference the id of an agent row whose observed state is installed. The
+-- columns mirror the contract's SpacePlugin so every installed market package can be read from
+-- the same authoritative space selection state.
 CREATE TABLE IF NOT EXISTS v2_space_agents (
 	id               uuid PRIMARY KEY DEFAULT gen_random_uuid(),
 	tenant_id        uuid NOT NULL REFERENCES tenants (id),
@@ -114,10 +127,13 @@ CREATE TABLE IF NOT EXISTS v2_space_agents (
 	status           text NOT NULL DEFAULT 'active',
 	source_namespace text NOT NULL DEFAULT 'official',
 	identifier       text NOT NULL DEFAULT '',
+	kind             text NOT NULL DEFAULT 'agent',
 	desired_state    text NOT NULL DEFAULT 'installed',
 	desired_version  text NOT NULL DEFAULT '',
 	observed_state   text NOT NULL DEFAULT 'installed',
 	observed_version text NOT NULL DEFAULT '',
+	install_error    text,
+	requested_by_user_id uuid REFERENCES users (id),
 	version          bigint NOT NULL DEFAULT 1,
 	created_at       timestamptz NOT NULL DEFAULT now(),
 	updated_at       timestamptz NOT NULL DEFAULT now()
@@ -128,15 +144,33 @@ CREATE TABLE IF NOT EXISTS v2_space_agents (
 ALTER TABLE v2_space_agents ADD COLUMN IF NOT EXISTS space_id uuid REFERENCES v2_spaces (id);
 ALTER TABLE v2_space_agents ADD COLUMN IF NOT EXISTS source_namespace text NOT NULL DEFAULT 'official';
 ALTER TABLE v2_space_agents ADD COLUMN IF NOT EXISTS identifier text NOT NULL DEFAULT '';
+ALTER TABLE v2_space_agents ADD COLUMN IF NOT EXISTS kind text NOT NULL DEFAULT 'agent';
 ALTER TABLE v2_space_agents ADD COLUMN IF NOT EXISTS desired_state text NOT NULL DEFAULT 'installed';
 ALTER TABLE v2_space_agents ADD COLUMN IF NOT EXISTS desired_version text NOT NULL DEFAULT '';
 ALTER TABLE v2_space_agents ADD COLUMN IF NOT EXISTS observed_state text NOT NULL DEFAULT 'installed';
 ALTER TABLE v2_space_agents ADD COLUMN IF NOT EXISTS observed_version text NOT NULL DEFAULT '';
+ALTER TABLE v2_space_agents ALTER COLUMN observed_version DROP NOT NULL;
+ALTER TABLE v2_space_agents ADD COLUMN IF NOT EXISTS install_error text;
+ALTER TABLE v2_space_agents ADD COLUMN IF NOT EXISTS requested_by_user_id uuid REFERENCES users (id);
 ALTER TABLE v2_space_agents ADD COLUMN IF NOT EXISTS version bigint NOT NULL DEFAULT 1;
 ALTER TABLE v2_space_agents ADD COLUMN IF NOT EXISTS updated_at timestamptz NOT NULL DEFAULT now();
 
 CREATE INDEX IF NOT EXISTS v2_space_agents_tenant ON v2_space_agents (tenant_id);
 CREATE UNIQUE INDEX IF NOT EXISTS v2_space_agents_plugin ON v2_space_agents (space_id, source_namespace, identifier);
+
+-- Successful plugin mutations are replayed by Idempotency-Key. The request digest separates a
+-- legitimate retry from reuse of the same key for a different selection.
+CREATE TABLE IF NOT EXISTS v2_plugin_mutations (
+	tenant_id       uuid NOT NULL REFERENCES tenants (id),
+	user_id         uuid NOT NULL REFERENCES users (id),
+	method          text NOT NULL,
+	path            text NOT NULL,
+	idempotency_key text NOT NULL,
+	request_hash    bytea NOT NULL,
+	response        jsonb NOT NULL,
+	created_at      timestamptz NOT NULL DEFAULT now(),
+	PRIMARY KEY (tenant_id, user_id, method, path, idempotency_key)
+);
 
 -- Members are typed references: a human row points at a user, an agent row at a Space Agent.
 -- Ending a membership keeps the row as history; rejoining inserts a new grant.

@@ -65,7 +65,8 @@ func TestSpaceAgentPlugins(t *testing.T) {
 			t.Fatalf("plugin identity = %+v", p)
 		}
 		if p.DesiredState != "installed" || p.ObservedState != "installed" ||
-			p.DesiredVersion != want.Version || p.ObservedVersion != want.Version {
+			p.DesiredVersion != want.Version || p.ObservedVersion == nil ||
+			*p.ObservedVersion != want.Version {
 			t.Fatalf("plugin state = %+v", p)
 		}
 		if p.InstallError != nil || p.RequestedByUserID != nil {

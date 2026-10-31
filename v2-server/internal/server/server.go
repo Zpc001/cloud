@@ -35,6 +35,10 @@ type Store interface {
 	TenantMembers(ctx context.Context, tenant, caller string) ([]store.Member, error)
 	TenantSpaces(ctx context.Context, tenant, caller string) ([]store.Space, error)
 	SpaceAgentPlugins(ctx context.Context, tenant, space, caller string) ([]store.SpacePlugin, error)
+	SpacePlugins(ctx context.Context, tenant, space, caller string) ([]store.SpacePlugin, error)
+	PluginCatalog(ctx context.Context, tenant, space, caller string) ([]store.PluginCatalogEntry, time.Time, error)
+	InstallSpacePlugin(ctx context.Context, tenant, space, caller, path, key string, in store.PluginInstallInput) (store.SpacePlugin, error)
+	RemoveSpacePlugin(ctx context.Context, tenant, space, caller, path, key string, in store.PluginRemoveInput) (store.SpacePlugin, error)
 }
 
 // Options tune the server.
@@ -66,7 +70,10 @@ func New(s Store, o Options) http.Handler {
 	mux.HandleFunc("GET /api/v1/tenants/{tid}/members", h.authed(h.members))
 	mux.HandleFunc("POST /api/v2/tenants/{tid}/members", h.authed(h.invite))
 	mux.HandleFunc("GET /api/v1/tenants/{tid}/spaces", h.authed(h.spaces))
+	mux.HandleFunc("GET /api/v1/tenants/{tid}/spaces/{sid}/plugins/catalog", h.authed(h.pluginCatalog))
 	mux.HandleFunc("GET /api/v1/tenants/{tid}/spaces/{sid}/plugins", h.authed(h.spacePlugins))
+	mux.HandleFunc("POST /api/v1/tenants/{tid}/spaces/{sid}/plugins", h.authed(h.installSpacePlugin))
+	mux.HandleFunc("DELETE /api/v1/tenants/{tid}/spaces/{sid}/plugins", h.authed(h.removeSpacePlugin))
 	mux.HandleFunc("GET /api/v2/tenants/{tid}/projects", h.authed(h.projects))
 	mux.HandleFunc("POST /api/v2/tenants/{tid}/projects", h.authed(h.projects))
 	mux.HandleFunc("GET /api/v2/tenants/{tid}/projects/{pid}", h.authed(h.projects))
