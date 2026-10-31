@@ -1,5 +1,14 @@
 import { seed } from './seed'
-import { DEMO_SPACE, type DemoUser, type Snapshot } from './types'
+import type {
+  ModelConnection,
+  ModelDefault,
+} from '@/api/generated.schemas'
+import {
+  DEMO_SPACE,
+  type DemoUser,
+  type Skill,
+  type Snapshot,
+} from './types'
 
 type StoragePort = Pick<Storage, 'getItem' | 'setItem'>
 /** Small local boundary: failed writes never become successful UI state. No HTTP or credentials. */
@@ -30,8 +39,19 @@ export class DemoRepository {
     }
     try {
       const value: unknown = JSON.parse(raw)
-      if (!isSnapshot(value)) throw new Error('invalid snapshot')
-      return value
+      if (isSnapshot(value)) return value
+      if (isLegacySnapshot(value)) {
+        const migrated: Snapshot = {
+          schema: 3,
+          revision: value.revision,
+          connections: value.connections,
+          modelDefault: value.modelDefault,
+          skills: value.skills.filter((skill) => skill.source.kind === 'local'),
+        }
+        this.write(migrated)
+        return migrated
+      }
+      throw new Error('invalid snapshot')
     } catch {
       throw new Error(
         '演示数据无法读取。请重试，或通过“重置演示”恢复示例；重置会清除本机演示修改。',
@@ -83,39 +103,43 @@ function rows(value: unknown, fields: string[]) {
 function isSnapshot(value: unknown): value is Snapshot {
   if (
     !record(value) ||
-    value.schema !== 2 ||
-    !Number.isSafeInteger(value.revision)
+    value.schema !== 3 ||
+    !commonSnapshotFields(value)
   )
     return false
+  return true
+}
+
+function isLegacySnapshot(
+  value: unknown,
+): value is {
+  schema: 2
+  revision: number
+  connections: ModelConnection[]
+  modelDefault: ModelDefault
+  skills: Skill[]
+} {
   if (
-    !rows(value.catalog, [
-      'id',
-      'identifier',
-      'sourceNamespace',
-      'title',
-      'kind',
-      'version',
-      'description',
-    ]) ||
-    !rows(value.installations, [
-      'id',
-      'identifier',
-      'sourceNamespace',
-      'desiredState',
-      'observedState',
-    ]) ||
-    !rows(value.skills, [
+    !record(value) ||
+    value.schema !== 2 ||
+    !commonSnapshotFields(value)
+  )
+    return false
+  return true
+}
+
+/** Shape shared by current snapshots and the pre-marketplace schema that can be upgraded. */
+function commonSnapshotFields(value: Record<string, unknown>): boolean {
+  return (
+    Number.isSafeInteger(value.revision) &&
+    rows(value.skills, [
       'id',
       'name',
       'namespace',
       'description',
       'content',
       'availability',
-    ]) ||
-    !rows(value.connections, ['id', 'name', 'protocol', 'authMode', 'baseUrl'])
-  )
-    return false
-  return (
+    ]) &&
     Array.isArray(value.skills) &&
     value.skills.every(
       (s) =>
