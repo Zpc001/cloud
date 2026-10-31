@@ -1,10 +1,11 @@
 /// <reference lib="dom" />
 import { expect, test } from '@playwright/test'
+import { signIn } from './login.ts'
 
 test('create a task, assign it, and walk it through the lifecycle', async ({ page }) => {
   const title = `e2e 任务-${crypto.randomUUID().slice(0, 8)}`
   await page.goto('/collaboration')
-  await page.getByRole('button', { name: '开发者登录' }).click()
+  await signIn(page)
   await expect(page.getByRole('heading', { level: 1, name: '协作' })).toBeVisible()
 
   // A task always belongs to a project; the form waits for the demo project rather than inventing one.
@@ -19,8 +20,8 @@ test('create a task, assign it, and walk it through the lifecycle', async ({ pag
   await expect(dialog.getByText('待处理', { exact: true })).toBeVisible()
 
   // Assignment is one typed target; a person can start the task by hand.
-  await dialog.getByLabel('指派给').selectOption({ label: '演示用户' })
-  await expect(page.getByText('已指派给 演示用户')).toBeVisible()
+  await dialog.getByLabel('指派给').selectOption({ label: '演示 Owner' })
+  await expect(page.getByText('已指派给 演示 Owner')).toBeVisible()
   await expect(dialog.getByText(/指派给小队只表示这个队负责，不会自动分派给成员/)).toBeVisible()
   await page.screenshot({ path: test.info().outputPath('task-detail.png'), fullPage: true })
 
@@ -39,5 +40,5 @@ test('create a task, assign it, and walk it through the lifecycle', async ({ pag
   const row = page.getByRole('button', { name: `查看任务 ${title}` })
   await expect(row).toBeVisible()
   await expect(row).toContainText('已完成')
-  await expect(row).toContainText('演示用户')
+  await expect(row).toContainText('演示 Owner')
 })

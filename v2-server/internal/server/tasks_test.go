@@ -10,7 +10,6 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/getkin/kin-openapi/openapi3"
 	"github.com/getkin/kin-openapi/openapi3filter"
@@ -19,6 +18,7 @@ import (
 
 	"github.com/wanglongan587/cloud/v2-server/internal/execution"
 	"github.com/wanglongan587/cloud/v2-server/internal/store"
+	"github.com/wanglongan587/cloud/v2-server/internal/store/storetest"
 )
 
 // taskClient talks to the task routes and validates every response against the candidate task
@@ -87,7 +87,7 @@ func (c *taskClient) do(method, path string, body any) (int, map[string]any) {
 
 func (c *taskClient) login() {
 	c.t.Helper()
-	if status, body := c.do("POST", "/auth/login", map[string]string{}); status != 200 {
+	if status, body := c.do("POST", "/auth/login", map[string]string{"provider": "email", "email": storetest.Email("squad-demo")}); status != 200 {
 		c.t.Fatalf("login = %d %v", status, body)
 	}
 }
@@ -97,10 +97,7 @@ const taskProjectID = "00000000-0000-4000-8000-0000000000aa"
 // project records the prepared project a task must point at.
 func (f *squadFixture) project(t *testing.T) {
 	t.Helper()
-	owner, e := f.store.Login(f.ctx, store.Identity{Source: "dev", Subject: "squad-demo", DisplayName: "演示用户"}, time.Hour)
-	if e != nil {
-		t.Fatal(e)
-	}
+	owner := storetest.SignIn(t, f.store, "squad-demo", "演示用户", store.RoleOwner)
 	u, e := f.store.SessionUser(f.ctx, owner)
 	if e != nil {
 		t.Fatal(e)
