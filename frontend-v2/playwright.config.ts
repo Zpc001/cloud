@@ -25,7 +25,14 @@ export default defineConfig({
       command: 'go run .',
       cwd: '../v2-server',
       url: `${server}/healthz`,
-      env: { V2_ADDR: `127.0.0.1:${serverPort}`, V2_DATABASE_URL: database },
+      env: {
+        V2_ADDR: `127.0.0.1:${serverPort}`,
+        V2_DATABASE_URL: database,
+        // Opt-in real Agent acceptance: forward the prepared Node assets and an isolated data directory
+        // so the Agent specs can run here; without them those specs skip themselves.
+        ...(process.env.V2_NODE_ASSETS_DIR ? { V2_NODE_ASSETS_DIR: process.env.V2_NODE_ASSETS_DIR } : {}),
+        ...(process.env.V2_DATA_DIR ? { V2_DATA_DIR: process.env.V2_DATA_DIR } : {}),
+      },
       reuseExistingServer: false,
       timeout: 120_000,
     },

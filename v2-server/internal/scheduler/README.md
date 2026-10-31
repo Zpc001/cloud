@@ -29,7 +29,7 @@
 - 有项目文本对话使用 `Start`，传入冻结的 projectId 和 target.executorId（公共目录里的执行器绑定 ID）。每次触发都是独立会话，目录由公共服务创建，消费方不能选择或争抢目录。执行器名称、agent/model 展示文字不能替代绑定 ID。
 - 任一路的接收错误都不会降级到另一路；缺少绑定、空提示词及工作流目标明确拒绝。工作流必须经自己的运行入口，不能在这里当作 Agent 对话运行。
 
-当前 HTTP 配置接口仍只允许无项目文本对话，项目/执行器目录尚未装配。上述有项目消费适配只供进程内集成，不表示用户界面已开放项目选择或能执行真实 Agent。
+配置接口和表单已经开放项目绑定：保存时按当前 `schedule-resources` 目录校验 projectId、模型与执行器绑定，触发时仍走同一个 `Start`；工作流目标仍未接入，写入返回 `503 schedule_target_unavailable`。
 
 两路共用结果、取消与释放流程。已接收的执行结果通过公共记录读取。成功必须满足 `AnswerComplete`；完整性不足不能标 succeeded。Agent Cancel 结束会话，model-only Cancel 只停止当前轮；定时任务不追问结果，两路随后都调用幂等 End。只有 End 确认后才释放同任务占位，历史和目录继续保留。
 
@@ -43,7 +43,7 @@ Start 是进程内同步调用。ConversationAdapter 对每条 occurrence 的操
 
 协调器测试使用显式时钟和记录/执行替身，验证调度选择、跨 Scope 隔离、并发扫描、防止重复手动请求、失败不自动派发、暂停恢复和重启核对门禁。记录模块的 PostgreSQL/race 验证承担实际原子接收、权限和占位约束；公共执行替身只验证消费方式，不算真实模型或完整运行时验收。
 
-恢复测试覆盖两种对话模式、本地引用写入失败、关闭重开连接池后原身份核对、未启动记录收尾、读取错误保留占位、启动与观察并发、同项目不同任务独立会话、Cancel 后 End 失败重试和旧草稿状态升级。统一 Options 测试验证未配置 Stub 返回不可用及显式注入的消费路径。真实 Service 到位后还需验证完整回答持久化、End/重启读取及真实 Agent；本包不会以 Stub 结果冒充这些证据。
+恢复测试覆盖两种对话模式、本地引用写入失败、关闭重开连接池后原身份核对、未启动记录收尾、读取错误保留占位、启动与观察并发、同项目不同任务独立会话、Cancel 后 End 失败重试和旧草稿状态升级。统一 Options 测试验证未配置 Stub 返回不可用及显式注入的消费路径。完整回答持久化、End/重启读取与真实 Agent 由下面的 opt-in 组合测试承担；普通 CI 的替身仍不冒充这些证据。
 
 ### 真实公共执行组合测试
 
@@ -54,4 +54,4 @@ TEST_DATABASE_URL=... go test -race -count=1 -tags execution_integration ./inter
 V2_NODE_ASSETS_DIR=... TEST_DATABASE_URL=... go test -race -count=1 -tags execution_integration ./internal/scheduler -run '^TestScheduledAgentRuntimeRestart$' -v
 ```
 
-每项测试先在子进程中经统一 Options 创建协调器和 Host，由真正运行的 ticker 扫描冻结时钟的到期配置，触发真实 fixture 执行、保存完整结果并确认 End；再经带登录 cookie 的 HTTP 立即运行（含同键重试）和取消入口，在实际 provider 边界暂停后验证 Cancel 的模式差异及 End。该进程退出后，第二个独立进程重新打开 PostgreSQL、Service 和 Host，核对两条原记录、完整结果与已结束会话，验证旧会话不可 Append、停机不补跑。Agent 路径还验证真实 shell 工具写出的文件在 End/重启后仍存在。测试配置使用已验证的持久绑定，项目配置表单仍待接入。默认 fixture 不需要凭据，这不是远端真实模型 provider 或浏览器页面验收。
+每项测试先在子进程中经统一 Options 创建协调器和 Host，由真正运行的 ticker 扫描冻结时钟的到期配置，触发真实 fixture 执行、保存完整结果并确认 End；再经带登录 cookie 的 HTTP 立即运行（含同键重试）和取消入口，在实际 provider 边界暂停后验证 Cancel 的模式差异及 End。该进程退出后，第二个独立进程重新打开 PostgreSQL、Service 和 Host，核对两条原记录、完整结果与已结束会话，验证旧会话不可 Append、停机不补跑。Agent 路径还验证真实 shell 工具写出的文件在 End/重启后仍存在。测试配置使用已验证的持久绑定；页面上的项目选择、立即运行与历史读取由 `frontend-v2/e2e/schedule-runs.spec.ts` 在真实栈上核对。默认 fixture 不需要凭据，这不是远端真实模型 provider 验收。
