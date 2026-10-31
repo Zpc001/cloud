@@ -102,6 +102,19 @@ it('does not leave a running acknowledgement after a completed response is read'
  await userEvent.click(screen.getByRole('button',{name:'关闭面板'}));expect(within(screen.getByRole('row',{name:/早报/})).getByText('成功')).toBeInTheDocument()
 })
 
+it('re-reads the final answer once the occurrence is released',async()=>{
+ const running={...occurrence,status:'running' as const,version:1}
+ vi.mocked(history.listScheduleHistory).mockResolvedValue({items:[running],nextCursor:''})
+ vi.mocked(history.getScheduleExecutionResult).mockResolvedValue({sessionId:'s',turnId:'t',mode:'model',workspaceId:'',startedAt:item.createdAt,endedAt:null,sessionEndedAt:null,result:null})
+ mount();const dialog=await detail();await userEvent.click(within(dialog).getByRole('button',{name:'运行历史'}))
+ expect(await within(dialog).findByText('执行尚未返回最终结果。')).toBeInTheDocument()
+ vi.mocked(history.listScheduleHistory).mockResolvedValue({items:[{...running,status:'succeeded',released:true,version:3}],nextCursor:''})
+ vi.mocked(history.getScheduleExecutionResult).mockResolvedValue({sessionId:'s',turnId:'t',mode:'model',workspaceId:'',startedAt:item.createdAt,endedAt:item.createdAt,sessionEndedAt:item.createdAt,result:{status:'completed',answer:'最终回答',answerComplete:true,stopReason:'stop',failureCode:'',usage:null}})
+ await userEvent.click(within(dialog).getByRole('button',{name:'刷新状态'}))
+ expect(await within(dialog).findByText('完整结果')).toBeInTheDocument()
+ expect(within(dialog).getByText('最终回答')).toBeInTheDocument()
+})
+
 it('orders multi-page history by (recordedAt DESC, id DESC) including fractional RFC3339 timestamps',async()=>{
  expect(compareTimestampsDesc('2026-10-01T09:00:00.5Z','2026-10-01T09:00:00Z')).toBeLessThan(0)
  expect(compareTimestampsDesc('2026-10-01T09:00:00.000002Z','2026-10-01T09:00:00.000001Z')).toBeLessThan(0)
