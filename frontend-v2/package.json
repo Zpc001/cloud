@@ -19,7 +19,7 @@
     "e2e": "playwright test",
     "api:generate:schedule-runtime": "orval --config orval.schedule-runtime.config.ts",
     "api:generate:chat": "orval --config orval.chat.config.ts",
-    "api:check:chat": "npm run api:generate:chat && git diff --exit-code -- src/features/chat/api src/features/chat/projects-api",
+    "api:check:chat": "npm run api:generate:chat && git diff --exit-code -- src/features/chat/api src/lib/projects-api",
     "api:generate:members": "orval --config orval.members.config.ts",
     "api:check:members": "npm run api:generate:members && git diff --exit-code -- src/features/settings/api"
   },
